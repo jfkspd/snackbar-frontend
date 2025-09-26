@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Snack Bar</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root{
+        --bg:#f7f9fc; --ink:#0f172a; --muted:#475569; --card:#fff; --border:#e2e8f0;
+        --accent:#2563eb; --accent-ink:#fff; --soft:#f1f5f9;
+        --shadow:0 1px 2px rgba(15,23,42,.06), 0 2px 8px rgba(15,23,42,.04);
+        --radius:12px;
+        --ok:#16a34a; --ok-border:#15803d;
+        --warn:#ef4444; --warn-border:#b91c1c;
+      }
+      *{ box-sizing:border-box; }
+      html,body{ margin:0; padding:0; background:var(--bg); color:var(--ink);
+        font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+      .wrap{ max-width:1000px; margin:20px auto 96px; padding:0 12px; }
+      header{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:6px; }
+      h1{ font-size:18px; margin:0; }
+      .sub{ color:var(--muted); margin:4px 0 10px; }
+      .toolbar{ display:flex; gap:8px; margin:8px 0 12px; }
+      input[type="search"]{ flex:1; background:#fff; border:1px solid var(--border); padding:8px 10px; border-radius:8px; color:var(--ink); outline:none; }
+
+      .grid{ display:grid; gap:10px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+      .card{ background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:10px; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:6px; min-height:84px; }
+      .name{ font-weight:600; margin:0; font-size:14px; }
+      .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+      .price{ font-weight:700; font-size:14px; }
+      .id{ color:var(--muted); font-size:11px; }
+      .stepper{ display:inline-flex; align-items:center; gap:0; border:1px solid var(--border); border-radius:999px; background:var(--soft); overflow:hidden; }
+      .btn{ border:0; background:transparent; padding:6px 10px; cursor:pointer; font-weight:700; font-size:14px; }
+      .qty{ min-width:28px; text-align:center; font-variant-numeric:tabular-nums; padding:0 4px; background:#fff; border-left:1px solid var(--border); border-right:1px solid var(--border); }
+      .chip{ display:inline-flex; gap:6px; align-items:center; padding:2px 8px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:11px; border:1px solid #e0e7ff; }
+      .select{ border:1px solid var(--border); border-radius:8px; padding:4px 8px; background:#fff; color:var(--ink); }
+      .empty{ text-align:center; color:var(--muted); padding:28px 0; border:1px dashed var(--border); border-radius:10px; background:#fff; }
+
+      /* Sticky summary & payment bar */
+      .bar{ position:fixed; left:0; right:0; bottom:0; background:#ffffffcc; backdrop-filter: blur(6px);
+        border-top:1px solid var(--border); padding:8px 12px; display:flex; align-items:center; justify-content:center; }
+      .bar-inner{ width:100%; max-width:1000px; display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:center; }
+      .summary{ color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .strong{ color:var(--ink); font-weight:800; }
+      .pay-row{ display:flex; gap:8px; align-items:center; }
+      .num{ width:110px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; }
+      .btn-primary{ border:1px solid #1d4ed8; background:var(--accent); color:var(--accent-ink); padding:8px 12px; border-radius:8px; cursor:pointer; box-shadow:var(--shadow); font-weight:700; }
+      .btn-ghost{ border:1px solid var(--border); background:#fff; color:var(--ink); padding:8px 12px; border-radius:8px; cursor:pointer; font-weight:600; }
+
+      /* Modal */
+      .modal-backdrop{ position:fixed; inset:0; background:rgba(15,23,42,.35); display:none; align-items:center; justify-content:center; padding:16px; }
+      .modal{ width:100%; max-width:520px; background:#fff; border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow); padding:14px; }
+      .modal header{ margin:0 0 8px; display:flex; justify-content:space-between; align-items:center; }
+      .cart-table{ width:100%; border-collapse:collapse; }
+      .cart-table th,.cart-table td{ border-bottom:1px solid var(--border); padding:8px 6px; text-align:left; font-size:13px; }
+      .right{ text-align:right; }
+      .cart-empty{ color:var(--muted); padding:14px 0; }
+      .modal footer{ display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:8px; }
+      .sr{ position:absolute; left:-9999px; }
+      .pill-toggle{ display:inline-flex; border:1px solid var(--border); border-radius:999px; overflow:hidden; }
+      .pill-toggle button{ padding:6px 10px; border:0; background:#fff; cursor:pointer; }
+      .pill-toggle button[aria-pressed="true"]{ background:#e0ecff; color:#1d4ed8; font-weight:700; }
+      .ok{ background:var(--ok); border-color:var(--ok-border); }
+      .danger{ background:var(--warn); border-color:var(--warn-border); }
+
+      /* Toast */
+      .toast{ position:fixed; left:50%; transform:translateX(-50%); bottom:64px; background:#111827; color:#fff;
+        padding:10px 14px; border-radius:10px; box-shadow:var(--shadow); display:none; z-index:9999; }
+      .toast.ok{ background:#065f46; } .toast.warn{ background:#7f1d1d; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>Snack Bar</h1>
+        <span class="chip">
+          Cashier:
+          <select id="userSelect" class="select"></select>
+        </span>
+      </header>
+      <p class="sub">Add items, enter payment, then <strong>Finalize Sale</strong>. Paid must be at least the subtotal.</p>
+
+      <div class="toolbar">
+        <label class="sr" for="q">Search</label>
+        <input id="q" type="search" placeholder="Search items… (e.g., chips, gatorade, soda)" />
+      </div>
+
+      <div id="grid" class="grid" aria-live="polite"></div>
+      <div id="empty" class="empty" hidden>No matching items.</div>
+    </div>
+
+    <!-- Sticky summary & payment bar -->
+    <div class="bar" id="bar" hidden>
+      <div class="bar-inner">
+        <div class="summary">
+          <span id="barCount" class="strong">0</span> items •
+          Subtotal: <span id="barSubtotal" class="strong">$0.00</span> •
+          Change: <span id="barChange" class="strong">$0.00</span>
+        </div>
+
+        <div class="pay-row" aria-label="Payment">
+          <label class="sr" for="paid">Paid</label>
+          <input id="paid" class="num" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Paid" />
+          <div class="pill-toggle" role="group" aria-label="Payment method">
+            <button id="pmCash" type="button" aria-pressed="true">Cash</button>
+            <button id="pmCashApp" type="button" aria-pressed="false">Cash App</button>
+          </div>
+        </div>
+
+        <div class="pay-row">
+          <button class="btn-ghost" id="clearBtn" type="button">Clear</button>
+          <button class="btn-primary" id="finalizeBtn" type="button">Finalize Sale</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirmation modal -->
+    <div class="modal-backdrop" id="backdrop" role="dialog" aria-modal="true" aria-labelledby="cartTitle">
+      <div class="modal">
+        <header>
+          <h2 id="cartTitle" style="margin:0;">Confirm Sale</h2>
+          <button class="btn-ghost" id="closeModal" type="button">✕</button>
+        </header>
+        <div id="cartBody"></div>
+        <footer>
+          <div><strong>Total:</strong> <span id="cartTotal">$0.00</span></div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-ghost" id="cancelSale" type="button">Cancel</button>
+            <button class="btn-primary ok" id="submitSale" type="button">Submit</button>
+          </div>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script>
+      // ===== CONFIG =====
+      const BACKEND = "https://YOUR-RENDER-SUBDOMAIN.onrender.com"; // e.g. https://snackbar-backend.onrender.com
+      const API_KEY  = "PASTE_THE_SAME_API_KEY_YOU_SET_IN_RENDER";
+      // ==================
+
+      const fmt = new Intl.NumberFormat('en-US', { style:'currency', currency:'USD' });
+
+      // State
+      let ITEMS = [];
+      let USERS = [];
+      const CART = new Map(); // item_id -> { ...item, qty }
+      let payMethod = 'cash';
+      let submitting = false;
+
+      // DOM
+      const grid = document.getElementById('grid');
+      const empty = document.getElementById('empty');
+      const q = document.getElementById('q');
+      const bar = document.getElementById('bar');
+      const barCount = document.getElementById('barCount');
+      const barSubtotal = document.getElementById('barSubtotal');
+      const barChange = document.getElementById('barChange');
+      const paidInput = document.getElementById('paid');
+      const pmCash = document.getElementById('pmCash');
+      const pmCashApp = document.getElementById('pmCashApp');
+      const backdrop = document.getElementById('backdrop');
+      const cartBody = document.getElementById('cartBody');
+      const cartTotal = document.getElementById('cartTotal');
+      const closeModalBtn = document.getElementById('closeModal');
+      const cancelSaleBtn = document.getElementById('cancelSale');
+      const submitSaleBtn = document.getElementById('submitSale');
+      const finalizeBtn = document.getElementById('finalizeBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const toast = document.getElementById('toast');
+      const userSelect = document.getElementById('userSelect');
+
+      // Backend helpers
+      async function fetchJSON(path) {
+        const res = await fetch(`${BACKEND}${path}`);
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      }
+      async function postJSON(path, body) {
+        const res = await fetch(`${BACKEND}${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": API_KEY },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      }
+
+      // Load items + users
+      (async function init(){
+        try{
+          const [items, users] = await Promise.all([
+            fetchJSON("/api/items"),
+            fetchJSON("/api/users")
+          ]);
+          ITEMS = items || [];
+          USERS = users || [];
+          renderUsers();
+          applyFilter();
+          updateBar();
+        }catch(e){
+          grid.innerHTML = '';
+          empty.hidden = false;
+          empty.textContent = 'Error loading: ' + (e?.message || e);
+        }
+      })();
+
+      function renderUsers(){
+        userSelect.innerHTML = '<option value="">Select cashier…</option>' +
+          USERS.map(u => `<option value="${u.user_id}">${escapeHTML(u.display_name)}</option>`).join('');
+      }
+
+      q.addEventListener('input', applyFilter);
+      paidInput.addEventListener('input', updateBar);
+
+      function applyFilter(){
+        const needle = (q.value || '').trim().toLowerCase();
+        const list = ITEMS.filter(it =>
+          !needle ||
+          it.name.toLowerCase().includes(needle) ||
+          String(it.item_id).toLowerCase().includes(needle)
+        );
+        draw(list);
+      }
+
+      function draw(list){
+        grid.innerHTML = '';
+        if (!list.length){ empty.hidden = false; return; }
+        empty.hidden = true;
+
+        for (const it of list){
+          const qty = CART.get(it.item_id)?.qty || 0;
+
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.dataset.id = it.item_id;
+          card.innerHTML = `
+            <div class="row">
+              <p class="name">${escapeHTML(it.name)}</p>
+              <div class="price">${fmt.format(it.price)}</div>
+            </div>
+            <div class="row">
+              <span class="id">ID ${escapeHTML(it.item_id)}</span>
+              <div class="stepper" role="group" aria-label="Quantity for ${escapeHTML(it.name)}">
+                <button class="btn" data-action="dec" aria-label="Decrease">−</button>
+                <span class="qty" aria-live="polite">${qty}</span>
+                <button class="btn" data-action="inc" aria-label="Increase">＋</button>
+              </div>
+            </div>
+          `;
+
+          const [decBtn, qtySpan, incBtn] = card.querySelectorAll('.stepper > *');
+
+          incBtn.addEventListener('click', () => {
+            const next = (CART.get(it.item_id)?.qty || 0) + 1;
+            CART.set(it.item_id, { ...it, qty: next });
+            qtySpan.textContent = next;
+            updateBar();
+          });
+
+          decBtn.addEventListener('click', () => {
+            const prev = (CART.get(it.item_id)?.qty || 0) - 1;
+            if (prev <= 0) {
+              CART.delete(it.item_id);
+              qtySpan.textContent = 0;
+            } else {
+              CART.set(it.item_id, { ...it, qty: prev });
+              qtySpan.textContent = prev;
+            }
+            updateBar();
+          });
+
+          grid.appendChild(card);
+        }
+      }
+
+      function calcTotals(){
+        let count = 0, subtotal = 0;
+        for (const { price, qty } of CART.values()){
+          count += qty;
+          subtotal += price * qty;
+        }
+        subtotal = Math.round(subtotal * 100) / 100;
+        return { count, subtotal };
+      }
+
+      function updateBar(){
+        const { count, subtotal } = calcTotals();
+        const paid = clampMoney(paidInput.value);
+        const change = Math.max(0, Math.round((paid - subtotal) * 100) / 100);
+
+        barCount.textContent = count;
+        barSubtotal.textContent = fmt.format(subtotal);
+        barChange.textContent = fmt.format(change);
+        bar.hidden = count === 0;
+      }
+
+      function clampMoney(v){
+        const n = Number(v);
+        if (!Number.isFinite(n) || n < 0) return 0;
+        return Math.floor(n * 100) / 100;
+      }
+
+      // Payment method toggle
+      pmCash.addEventListener('click', () => setPayMethod('cash'));
+      pmCashApp.addEventListener('click', () => setPayMethod('cashapp'));
+      function setPayMethod(m){
+        payMethod = m;
+        pmCash.setAttribute('aria-pressed', String(m === 'cash'));
+        pmCashApp.setAttribute('aria-pressed', String(m === 'cashapp'));
+      }
+
+      // Finalize -> confirm modal
+      finalizeBtn.addEventListener('click', () => {
+        const { subtotal } = calcTotals();
+        const paid = clampMoney(paidInput.value);
+        if (subtotal <= 0) { toastMsg('Add at least one item.', 'warn'); return; }
+        if (payMethod === 'cashapp' && !paid) { paidInput.value = subtotal.toFixed(2); }
+        openConfirm();
+      });
+
+      clearBtn.addEventListener('click', () => {
+        CART.clear();
+        paidInput.value = '';
+        updateBar();
+        applyFilter();
+        toastMsg('Cleared.', 'ok');
+      });
+
+      // Confirm modal
+      function openConfirm(){
+        const items = Array.from(CART.values());
+        const { subtotal } = calcTotals();
+        const paid = clampMoney(paidInput.value);
+        const change = Math.max(0, Math.round((paid - subtotal) * 100) / 100);
+
+        const rows = items.map(it => `
+          <tr>
+            <td>${escapeHTML(it.name)} <div class="id">ID ${escapeHTML(it.item_id)}</div></td>
+            <td class="right">${fmt.format(it.price)}</td>
+            <td class="right">${it.qty}</td>
+            <td class="right">${fmt.format(it.price * it.qty)}</td>
+          </tr>
+        `).join('');
+
+        cartBody.innerHTML = `
+          <table class="cart-table">
+            <thead>
+              <tr><th>Item</th><th class="right">Price</th><th class="right">Qty</th><th class="right">Total</th></tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px; align-items:flex-end;">
+            <div>Subtotal: <strong>${fmt.format(subtotal)}</strong></div>
+            <div>Paid (${payMethod === 'cash' ? 'Cash' : 'Cash App'}): <strong>${fmt.format(paid)}</strong></div>
+            <div>Change: <strong>${fmt.format(change)}</strong></div>
+          </div>
+        `;
+        cartTotal.textContent = fmt.format(subtotal);
+        backdrop.style.display = 'flex';
+      }
+
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeConfirm(); });
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeConfirm(); });
+      closeModalBtn.addEventListener('click', closeConfirm);
+      cancelSaleBtn.addEventListener('click', closeConfirm);
+      function closeConfirm(){ if (!submitting) backdrop.style.display = 'none'; }
+
+      // Submit sale (blocks underpay)
+      submitSaleBtn.addEventListener('click', async () => {
+        if (submitting) return;
+        const { subtotal } = calcTotals();
+        const paid = clampMoney(paidInput.value);
+        const user_id = userSelect.value || ''; // optional
+        if (subtotal <= 0) { toastMsg('Add at least one item.', 'warn'); return; }
+        if (paid < subtotal) { toastMsg('Paid is less than subtotal. Please collect full amount.', 'warn'); return; }
+        if (!user_id) { toastMsg('Select a cashier.', 'warn'); return; }
+
+        const items = Array.from(CART.values()).map(({ item_id, price, qty }) => ({
+          item_id, qty, price_each: price
+        }));
+
+        submitting = true;
+        submitSaleBtn.disabled = true;
+        submitSaleBtn.textContent = 'Submitting…';
+
+        try{
+          const res = await postJSON("/api/checkout", { user_id, items, payment_method: payMethod, notes: '' });
+          submitting = false;
+          submitSaleBtn.disabled = false;
+          submitSaleBtn.textContent = 'Submit';
+          backdrop.style.display = 'none';
+
+          CART.clear();
+          paidInput.value = '';
+          updateBar();
+          applyFilter();
+
+          toastMsg(`Sale complete. Order ${res.order_id}`, 'ok');
+        }catch(err){
+          submitting = false;
+          submitSaleBtn.disabled = false;
+          submitSaleBtn.textContent = 'Submit';
+          toastMsg('Error finalizing sale: ' + (err?.message || err), 'warn');
+        }
+      });
+
+      // Toast (replaces browser alerts)
+      let toastTimer;
+      function toastMsg(msg, type='ok'){
+        toast.textContent = msg;
+        toast.className = `toast ${type === 'warn' ? 'warn' : 'ok'}`;
+        toast.style.display = 'block';
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 3000);
+      }
+
+      function escapeHTML(s){
+        return String(s)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#039;');
+      }
+    </script>
+  </body>
+</html>
