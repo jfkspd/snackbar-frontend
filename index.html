@@ -4,124 +4,307 @@
     <meta charset="utf-8" />
     <title>Snack Bar — Connectivity Test</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-   <style>
-  body{font:16px system-ui, sans-serif; margin:24px;}
-  .ok{color:#065f46} .warn{color:#7f1d1d}
-  code{background:#f3f4f6; padding:2px 6px; border-radius:6px}
+    <style>
+      body{font:16px system-ui, sans-serif; margin:24px;}
+      .ok{color:#065f46} .warn{color:#7f1d1d}
+      code{background:#f3f4f6; padding:2px 6px; border-radius:6px}
 
-  /* NEW: simple card grid + stepper */
-  .grid{
-    display:grid; gap:10px;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  }
-  .card{
-    background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:10px;
-  }
-  .row{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
-  .name{ font-weight:600; }
-  .price{ font-weight:700; }
-  .id{ color:#475569; font-size:12px; }
-  .stepper{
-    display:inline-flex; align-items:center; overflow:hidden;
-    border:1px solid #e2e8f0; border-radius:999px; background:#f8fafc;
-  }
-  .btn{
-    border:0; background:transparent; padding:6px 10px; font-size:16px; cursor:pointer;
-  }
-  .qty{
-    min-width:28px; text-align:center; padding:0 6px; background:#fff;
-    border-left:1px solid #e2e8f0; border-right:1px solid #e2e8f0;
-    font-variant-numeric: tabular-nums;
-  }
-  .summary{ color:#475569; margin:6px 0 10px; }
-</style>
-
+      /* simple card grid + stepper */
+      .grid{
+        display:grid; gap:10px;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      }
+      .card{
+        background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:10px;
+      }
+      .row{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
+      .name{ font-weight:600; }
+      .price{ font-weight:700; }
+      .id{ color:#475569; font-size:12px; }
+      .stepper{
+        display:inline-flex; align-items:center; overflow:hidden;
+        border:1px solid #e2e8f0; border-radius:999px; background:#f8fafc;
+      }
+      .btn{
+        border:0; background:transparent; padding:6px 10px; font-size:16px; cursor:pointer;
+      }
+      .qty{
+        min-width:28px; text-align:center; padding:0 6px; background:#fff;
+        border-left:1px solid #e2e8f0; border-right:1px solid #e2e8f0;
+        font-variant-numeric: tabular-nums;
+      }
+      .summary{ color:#475569; margin:6px 0 10px; }
+    </style>
   </head>
   <body>
     <h1>Snack Bar — Connectivity Test</h1>
     <p>If you can read this on SCUSD Wi-Fi, static hosting is OK ✅</p>
+
     <h2>Fetch Test</h2>
     <p id="status">Running fetch test…</p>
 
     <label for="q">Search</label>
-<input id="q" type="search" placeholder="e.g., chips, soda, 0003" 
-       style="width: min(520px, 95%); padding: 8px; margin: 8px 0; font-size: 16px;">
+    <input id="q" type="search" placeholder="e.g., chips, soda, 0003"
+           style="width: min(520px, 95%); padding: 8px; margin: 8px 0; font-size: 16px;">
 
-<h2>Items</h2>
-    <button onclick="testSubmit()">Test Submit (first cart item)</button>
+    <h2>Items</h2>
+    <p id="summary" class="summary">0 items — $0.00</p>
+    <button id="testSubmit" type="button">Test Submit (first cart item)</button>
+    <div id="items" class="grid" aria-live="polite"></div>
 
-<p id="summary" class="summary">0 items — $0.00</p>
-<div id="items" class="grid" aria-live="polite"></div>
+    <script>
+    /*** CONFIG: CSV (Items) ***/
+    const ITEMS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTTtlEwo0hKcYdsMdjhp71Wq1NWDTEwIkdytSm_E1EQfv1x8FHx8sEzyhQoym44_RX2mp2FXvN3jCwf/pub?gid=0&single=true&output=csv';
 
-<script>
-/*** GOOGLE FORM ENDPOINT ***/
-const FORM_BASE = 'https://docs.google.com/forms/d/e/1FAIpQLScbRVY7T_IKUPx_xYcDlyncM0TV09piz-xd_eLSO04O7gd0TA/viewform';
+    /*** CONFIG: Google Form mapping (from your prefilled link) ***/
+    const FORM_BASE = 'https://docs.google.com/forms/d/e/1FAIpQLScbRVY7T_IKUPx_xYcDlyncM0TV09piz-xd_eLSO04O7gd0TA/viewform';
+    const ENTRY = {
+      order_id:       'entry.1662144781',
+      payment_method: 'entry.1579496181',
+      subtotal:       'entry.1026596473',
+      paid:           'entry.459825042',
+      change:         'entry.1466509759',
+      item_id:        'entry.187752476',
+      name:           'entry.1735654032',
+      price_each:     'entry.224726774',
+      qty:            'entry.348979745',
+      line_total:     'entry.1281301043',
+    };
 
-const ENTRY = {
-  order_id:       'entry.1662144781',
-  payment_method: 'entry.1579496181',
-  subtotal:       'entry.1026596473',
-  paid:           'entry.459825042',
-  change:         'entry.1466509759',
-  item_id:        'entry.187752476',
-  name:           'entry.1735654032',
-  price_each:     'entry.224726774',
-  qty:            'entry.348979745',
-  line_total:     'entry.1281301043',
-};
+    // DOM
+    const statusEl  = document.getElementById('status');
+    const itemsEl   = document.getElementById('items');
+    const summaryEl = document.getElementById('summary');
+    const qInput    = document.getElementById('q');
+    const testBtn   = document.getElementById('testSubmit');
 
-/*** Utility: escape HTML */
-function esc(s){
-  return String(s)
-    .replaceAll('&','&amp;')
-    .replaceAll('<','&lt;')
-    .replaceAll('>','&gt;');
-}
+    // State
+    const fmt = new Intl.NumberFormat('en-US', { style:'currency', currency:'USD' });
+    let ALL_ITEMS = [];    // parsed & active items
+    let VIEW = [];         // filtered view
+    const CART = new Map();// item_id -> { item_id, name, price, qty }
 
-/*** Demo cart just so you can test */
-let CART = [
-  { item_id: '1', name: 'BIG GATORADE', price_each: 2.00, qty: 1, line_total: 2.00 }
-];
+    run().catch(e => {
+      statusEl.innerHTML = `<span class="warn">Script error</span> — ${e && e.message || e}`;
+      console.error(e);
+    });
 
-/*** Build a prefilled Form URL from the first item in the cart */
-function buildPrefillURL(){
-  if (!CART.length) {
-    alert('Cart is empty');
-    return;
-  }
-  const orderId = 'O' + Date.now();   // quick unique id
-  const subtotal = CART.reduce((s,it)=>s+it.line_total,0).toFixed(2);
-  const paid = subtotal;
-  const change = 0;
-  const method = 'cash';
-  const first = CART[0];
+    async function run(){
+      setStatus('Fetching Items…');
+      try{
+        const res = await fetch(ITEMS_CSV_URL, { cache:'no-store' });
+        if(!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        const csv = await res.text();
 
-  const params = new URLSearchParams();
-  params.set(ENTRY.order_id, orderId);
-  params.set(ENTRY.payment_method, method);
-  params.set(ENTRY.subtotal, subtotal);
-  params.set(ENTRY.paid, paid);
-  params.set(ENTRY.change, change);
-  params.set(ENTRY.item_id, first.item_id);
-  params.set(ENTRY.name, first.name);
-  params.set(ENTRY.price_each, first.price_each);
-  params.set(ENTRY.qty, first.qty);
-  params.set(ENTRY.line_total, first.line_total);
+        const rows = parseCSV(csv);
+        if(!rows.length) throw new Error('CSV is empty');
 
-  return `${FORM_BASE}?usp=pp_url&${params.toString()}`;
-}
+        ALL_ITEMS = rowsToItems(rows);
+        VIEW = ALL_ITEMS.slice();
 
-/*** Test button action */
-function testSubmit(){
-  const url = buildPrefillURL();
-  if (url) window.open(url, '_blank');
-}
-</script>
+        statusEl.innerHTML = `<span class="ok">Fetched & parsed!</span> Found <strong>${ALL_ITEMS.length}</strong> active items.`;
 
+        renderItems(VIEW);
+        wireSearch();
+        updateSummary();
 
-    
+        // wire test submit
+        testBtn.addEventListener('click', onTestSubmit);
+      }catch(err){
+        statusEl.innerHTML = `<span class="warn">Fetch FAILED</span> — ${err && err.message || err}`;
+      }
+    }
 
+    /** CSV parser that handles quoted commas/newlines */
+    function parseCSV(text){
+      const rows = [];
+      let i=0, f='', r=[], inQ=false;
+      const pushF=()=>{ r.push(f); f=''; };
+      const pushR=()=>{ rows.push(r); r=[]; };
+      while(i<text.length){
+        const c=text[i];
+        if(inQ){
+          if(c==='"'){
+            if(text[i+1]==='"'){ f+='"'; i+=2; continue; }
+            inQ=false; i++; continue;
+          }
+          f+=c; i++; continue;
+        }
+        if(c==='"'){ inQ=true; i++; continue; }
+        if(c===','){ pushF(); i++; continue; }
+        if(c==='\r'){ i++; continue; }
+        if(c==='\n'){ pushF(); pushR(); i++; continue; }
+        f+=c; i++;
+      }
+      pushF(); if(r.length) pushR();
+      return rows;
+    }
 
+    /** Helpers */
+    function parseMoney(v){
+      const n = Number(String(v).replace(/[^\d.-]/g, ''));
+      return Number.isFinite(n) ? n : NaN;
+    }
+    function toBool(v){
+      const s = String(v).trim().toLowerCase();
+      return v === true || s === 'true' || s === '1' || s === 'yes' || s === 'y';
+    }
+    function escapeHTML(s){
+      return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+    }
+    function setStatus(msg){ statusEl.textContent = msg; }
 
+    /** Map rows -> items using header names (case-insensitive) */
+    function rowsToItems(rows){
+      const headers = rows[0].map(h => String(h).trim().toLowerCase());
+      const idx = {
+        item_id: headers.indexOf('item_id'),
+        name:    headers.indexOf('name'),
+        price:   headers.indexOf('price'),
+        active:  headers.indexOf('active')
+      };
+      const missing = Object.entries(idx).filter(([,i]) => i === -1).map(([k]) => k);
+      if(missing.length){
+        throw new Error('Missing columns: ' + missing.join(', ') + ' (need item_id, name, price, active)');
+      }
+      return rows.slice(1)
+        .map(row => ({
+          item_id: String(row[idx.item_id] ?? '').trim(),
+          name:    String(row[idx.name] ?? '').trim(),
+          price:   parseMoney(row[idx.price]),
+          active:  toBool(row[idx.active])
+        }))
+        .filter(it => it.active && it.item_id && Number.isFinite(it.price))
+        .sort((a,b) => a.name.localeCompare(b.name));
+    }
+
+    /** Render cards with +/– stepper */
+    function renderItems(items){
+      if(!items.length){
+        itemsEl.innerHTML = '<p class="warn">No matching items.</p>';
+        return;
+      }
+      let html = '';
+      for (const it of items){
+        const qty = CART.get(it.item_id)?.qty || 0;
+        html += `
+          <div class="card" data-id="${escapeHTML(it.item_id)}">
+            <div class="row">
+              <div class="name">${escapeHTML(it.name)}</div>
+              <div class="price">${fmt.format(it.price)}</div>
+            </div>
+            <div class="row">
+              <span class="id">ID ${escapeHTML(it.item_id)}</span>
+              <div class="stepper" role="group" aria-label="Quantity for ${escapeHTML(it.name)}">
+                <button class="btn" data-action="dec" aria-label="Decrease">−</button>
+                <span class="qty" aria-live="polite">${qty}</span>
+                <button class="btn" data-action="inc" aria-label="Increase">＋</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      itemsEl.innerHTML = html;
+
+      // event delegation for fewer listeners
+      itemsEl.onclick = (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const action = btn.getAttribute('data-action');
+        const card = btn.closest('.card');
+        if (!card) return;
+        const id = card.getAttribute('data-id');
+        if (action === 'inc') inc(id);
+        if (action === 'dec') dec(id);
+      };
+    }
+
+    function inc(id){
+      const item = ALL_ITEMS.find(x => String(x.item_id) === String(id));
+      if (!item) return;
+      const prev = CART.get(id)?.qty || 0;
+      CART.set(id, { ...item, qty: prev + 1 });
+      renderItems(VIEW);
+      updateSummary();
+    }
+    function dec(id){
+      const item = ALL_ITEMS.find(x => String(x.item_id) === String(id));
+      if (!item) return;
+      const prev = CART.get(id)?.qty || 0;
+      const next = Math.max(0, prev - 1);
+      if (next === 0) CART.delete(id); else CART.set(id, { ...item, qty: next });
+      renderItems(VIEW);
+      updateSummary();
+    }
+
+    /** Update summary line */
+    function updateSummary(){
+      let count = 0, subtotal = 0;
+      for (const { price, qty } of CART.values()){
+        count += qty;
+        subtotal += price * qty;
+      }
+      subtotal = Math.round(subtotal * 100) / 100;
+      summaryEl.textContent = `${count} item${count===1?'':'s'} — ${fmt.format(subtotal)}`;
+    }
+
+    /** Search wiring with debounce */
+    function wireSearch(){
+      let t;
+      qInput.addEventListener('input', () => {
+        clearTimeout(t);
+        t = setTimeout(applyFilter, 120);
+      });
+    }
+    function applyFilter(){
+      const needle = (qInput.value || '').trim().toLowerCase();
+      if(!needle){
+        VIEW = ALL_ITEMS.slice();
+        renderItems(VIEW);
+        return;
+      }
+      VIEW = ALL_ITEMS.filter(it =>
+        it.name.toLowerCase().includes(needle) ||
+        String(it.item_id).toLowerCase().includes(needle)
+      );
+      renderItems(VIEW);
+    }
+
+    /** Test Submit: open a prefilled Form for the FIRST cart item */
+    function onTestSubmit(){
+      const first = CART.values().next().value;
+      if (!first) {
+        alert('Add at least one item with + before testing submit.');
+        return;
+      }
+      // order id & totals
+      const now = new Date();
+      const orderId = 'O' + now.toISOString().replace(/[-:.TZ]/g,'').slice(0,14);
+      let subtotal = 0;
+      for (const { price, qty } of CART.values()) subtotal += price * qty;
+      subtotal = Math.round(subtotal * 100) / 100;
+
+      const paid = subtotal;     // first test: exact pay
+      const change = 0;
+      const payMethod = 'cash';  // or 'cashapp'
+
+      const line_total = Math.round(first.price * first.qty * 100) / 100;
+
+      const params = new URLSearchParams();
+      params.set(ENTRY.order_id, orderId);
+      params.set(ENTRY.payment_method, payMethod);
+      params.set(ENTRY.subtotal, String(subtotal));
+      params.set(ENTRY.paid, String(paid));
+      params.set(ENTRY.change, String(change));
+      params.set(ENTRY.item_id, first.item_id);
+      params.set(ENTRY.name, first.name);
+      params.set(ENTRY.price_each, String(first.price));
+      params.set(ENTRY.qty, String(first.qty));
+      params.set(ENTRY.line_total, String(line_total));
+
+      const prefillUrl = `${FORM_BASE}?usp=pp_url&${params.toString()}`;
+      window.open(prefillUrl, '_blank', 'noopener');
+    }
+    </script>
   </body>
 </html>
