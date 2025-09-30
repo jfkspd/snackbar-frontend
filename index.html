@@ -47,7 +47,7 @@ async function run(){
 
     ALL_ITEMS = rowsToItems(rows);
     VIEW = ALL_ITEMS.slice(); // start with all
-    statusEl.innerHTML = `<span class="ok">Fetched & parsed!</span> Found <strong>${ALL_ITEMS.length</strong>} active items.`;
+    statusEl.innerHTML = `<span class="ok">Fetched & parsed!</span> Found <strong>${ALL_ITEMS.length}</strong> active items.`;
 
     renderItems(VIEW);
     wireSearch();
