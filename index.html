@@ -4,11 +4,38 @@
     <meta charset="utf-8" />
     <title>Snack Bar — Connectivity Test</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      body{font:16px system-ui, sans-serif; margin:24px;}
-      .ok{color:#065f46} .warn{color:#7f1d1d}
-      code{background:#f3f4f6; padding:2px 6px; border-radius:6px}
-    </style>
+   <style>
+  body{font:16px system-ui, sans-serif; margin:24px;}
+  .ok{color:#065f46} .warn{color:#7f1d1d}
+  code{background:#f3f4f6; padding:2px 6px; border-radius:6px}
+
+  /* NEW: simple card grid + stepper */
+  .grid{
+    display:grid; gap:10px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+  .card{
+    background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:10px;
+  }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .name{ font-weight:600; }
+  .price{ font-weight:700; }
+  .id{ color:#475569; font-size:12px; }
+  .stepper{
+    display:inline-flex; align-items:center; overflow:hidden;
+    border:1px solid #e2e8f0; border-radius:999px; background:#f8fafc;
+  }
+  .btn{
+    border:0; background:transparent; padding:6px 10px; font-size:16px; cursor:pointer;
+  }
+  .qty{
+    min-width:28px; text-align:center; padding:0 6px; background:#fff;
+    border-left:1px solid #e2e8f0; border-right:1px solid #e2e8f0;
+    font-variant-numeric: tabular-nums;
+  }
+  .summary{ color:#475569; margin:6px 0 10px; }
+</style>
+
   </head>
   <body>
     <h1>Snack Bar — Connectivity Test</h1>
@@ -21,8 +48,8 @@
        style="width: min(520px, 95%); padding: 8px; margin: 8px 0; font-size: 16px;">
 
 <h2>Items</h2>
-<div id="items"></div>
-
+<p id="summary" class="summary">0 items — $0.00</p>
+<div id="items" class="grid" aria-live="polite"></div>
 <script>
 /** Use your working CSV link */
 const ITEMS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTTtlEwo0hKcYdsMdjhp71Wq1NWDTEwIkdytSm_E1EQfv1x8FHx8sEzyhQoym44_RX2mp2FXvN3jCwf/pub?gid=0&single=true&output=csv';
@@ -30,9 +57,13 @@ const ITEMS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTTtlEwo0
 const statusEl = document.getElementById('status');
 const itemsEl  = document.getElementById('items');
 const qInput   = document.getElementById('q');
+const summaryEl= document.getElementById('summary');
 
-let ALL_ITEMS = [];  // parsed & active items
-let VIEW = [];       // current filtered view
+const fmt = new Intl.NumberFormat('en-US', { style:'currency', currency:'USD' });
+
+let ALL_ITEMS = [];   // parsed & active items
+let VIEW = [];        // filtered view
+const CART = new Map(); // item_id -> { ...item, qty }
 
 run().catch(e => {
   statusEl.innerHTML = `<span class="warn">Script error</span> — ${e && e.message || e}`;
@@ -48,23 +79,16 @@ async function run(){
     const csv = await res.text();
 
     const rows = parseCSV(csv);
-
-    // Debug: show headers + first row so we can verify shape
-    if (rows.length) {
-      statusEl.innerHTML += `<div><small>Headers:</small> <code>${escapeHTML(rows[0].join(' | '))}</code></div>`;
-    }
-    if (rows.length > 1) {
-      statusEl.innerHTML += `<div><small>Row1:</small> <code>${escapeHTML(rows[1].join(' | '))}</code></div>`;
-    }
-    if(!rows.length) throw new Error('CSV is empty');
+    if (!rows.length) throw new Error('CSV is empty');
 
     ALL_ITEMS = rowsToItems(rows);
-    VIEW = ALL_ITEMS.slice(); // start with all
+    VIEW = ALL_ITEMS.slice();
 
     statusEl.innerHTML = `<span class="ok">Fetched & parsed!</span> Found <strong>${ALL_ITEMS.length}</strong> active items.`;
 
     renderItems(VIEW);
     wireSearch();
+    updateSummary();
   }catch(err){
     statusEl.innerHTML = `<span class="warn">Fetch FAILED</span> — ${err && err.message || err}`;
   }
@@ -101,16 +125,13 @@ function parseMoney(v){
   const n = Number(String(v).replace(/[^\d.-]/g, ''));
   return Number.isFinite(n) ? n : NaN;
 }
-
 function toBool(v){
   const s = String(v).trim().toLowerCase();
   return v === true || s === 'true' || s === '1' || s === 'yes' || s === 'y';
 }
-
 function escapeHTML(s){
   return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 }
-
 function setStatus(msg){ statusEl.textContent = msg; }
 
 /** Map rows -> items using header names (case-insensitive) */
@@ -137,16 +158,76 @@ function rowsToItems(rows){
     .sort((a,b) => a.name.localeCompare(b.name));
 }
 
-/** Simple client-side render */
+/** Render cards with +/– stepper */
 function renderItems(items){
   if(!items.length){
     itemsEl.innerHTML = '<p class="warn">No matching items.</p>';
     return;
   }
-  const list = items.map(it =>
-    `<li><code>${escapeHTML(it.item_id)}</code> — ${escapeHTML(it.name)} — $${it.price.toFixed(2)}</li>`
-  ).join('');
-  itemsEl.innerHTML = `<p><strong>${items.length}</strong> items shown</p><ul>${list}</ul>`;
+
+  // Build all cards as one HTML string for speed (Chromebooks 👍)
+  let html = '';
+  for (const it of items){
+    const qty = CART.get(it.item_id)?.qty || 0;
+    html += `
+      <div class="card" data-id="${escapeHTML(it.item_id)}">
+        <div class="row">
+          <div class="name">${escapeHTML(it.name)}</div>
+          <div class="price">${fmt.format(it.price)}</div>
+        </div>
+        <div class="row">
+          <span class="id">ID ${escapeHTML(it.item_id)}</span>
+          <div class="stepper" role="group" aria-label="Quantity for ${escapeHTML(it.name)}">
+            <button class="btn" data-action="dec" aria-label="Decrease">−</button>
+            <span class="qty" aria-live="polite">${qty}</span>
+            <button class="btn" data-action="inc" aria-label="Increase">＋</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  itemsEl.innerHTML = html;
+
+  // Wire click handlers (event delegation = fewer listeners)
+  itemsEl.onclick = (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    const card = btn.closest('.card');
+    if (!card) return;
+    const id = card.getAttribute('data-id');
+    if (action === 'inc') inc(id);
+    if (action === 'dec') dec(id);
+  };
+}
+
+function inc(id){
+  const item = ALL_ITEMS.find(x => String(x.item_id) === String(id));
+  if (!item) return;
+  const prev = CART.get(id)?.qty || 0;
+  CART.set(id, { ...item, qty: prev + 1 });
+  renderItems(VIEW);
+  updateSummary();
+}
+function dec(id){
+  const item = ALL_ITEMS.find(x => String(x.item_id) === String(id));
+  if (!item) return;
+  const prev = CART.get(id)?.qty || 0;
+  const next = Math.max(0, prev - 1);
+  if (next === 0) CART.delete(id); else CART.set(id, { ...item, qty: next });
+  renderItems(VIEW);
+  updateSummary();
+}
+
+/** Update summary line */
+function updateSummary(){
+  let count = 0, subtotal = 0;
+  for (const { price, qty } of CART.values()){
+    count += qty;
+    subtotal += price * qty;
+  }
+  subtotal = Math.round(subtotal * 100) / 100;
+  summaryEl.textContent = `${count} item${count===1?'':'s'} — ${fmt.format(subtotal)}`;
 }
 
 /** Search wiring with debounce */
@@ -172,6 +253,7 @@ function applyFilter(){
   renderItems(VIEW);
 }
 </script>
+
 
 
   </body>
