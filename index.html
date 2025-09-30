@@ -181,11 +181,40 @@
       statusEl.innerHTML+=`<div>${JSON.stringify(j)}</div>`;
     }
 
-    async function onSelfTest(){
-      const res=await fetch(PROXY_URL,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ping:true})});
-      const j=await res.json();
-      alert("Proxy self-test: "+JSON.stringify(j));
+      async function onSelfTest(){
+  const now = new Date();
+  const orderId = 'TEST' + now.toISOString().replace(/[-:.TZ]/g,'').slice(0,14);
+  const payload = {
+    'entry.1662144781': orderId,     // order_id
+    'entry.1579496181': 'cash',      // payment_method
+    'entry.1026596473': 1.00,        // subtotal
+    'entry.459825042':  1.00,        // paid
+    'entry.1466509759': 0.00,        // change
+    'entry.187752476':  'TEST1',     // item_id
+    'entry.1735654032': 'PROXY SELF TEST', // name
+    'entry.224726774':  1.00,        // price_each
+    'entry.348979745':  1,           // qty
+    'entry.1281301043': 1.00         // line_total
+  };
+
+  try{
+    const res = await fetch('https://snackbar-form-proxy.chris-herner.workers.dev/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if (json && json.ok) {
+      statusEl.innerHTML += `<div class="ok">Proxy self-test OK (order ${orderId}). Check Form Responses 1.</div>`;
+    } else {
+      statusEl.innerHTML += `<div class="warn">Proxy self-test failed — ${json && json.status || res.status}</div>`;
     }
+  } catch(err){
+    statusEl.innerHTML += `<div class="warn">Proxy self-test error — ${err && err.message || err}</div>`;
+  }
+}
+
+    
     </script>
   </body>
 </html>
