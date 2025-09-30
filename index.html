@@ -16,21 +16,86 @@
     <h2>Fetch Test</h2>
     <p id="status">Running fetch test…</p>
     <script>
-      // Harmless, CORS-safe JSON test endpoint:
-      fetch('https://docs.google.com/spreadsheets/d/e/2PACX-1vTTtlEwo0hKcYdsMdjhp71Wq1NWDTEwIkdytSm_E1EQfv1x8FHx8sEzyhQoym44_RX2mp2FXvN3jCwf/pub?gid=0&single=true&output=csv', {cache:'no-store'})
-  .then(r => r.text())   // ✅ get raw CSV text
-  .then(csv => {
-    const rows = csv.trim().split('\n').map(r => r.split(','));
-    const [headers, ...data] = rows;
+/** 1) Put your Publish-to-web CSV URL here (File → Share → Publish to the web → Items → CSV) **/
+const PUBLISH_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTTtlEwo0hKcYdsMdjhp71Wq1NWDTEwIkdytSm_E1EQfv1x8FHx8sEzyhQoym44_RX2mp2FXvN3jCwf/pub?gid=0&single=true&output=csv';
 
-    statusEl.innerHTML = '<span class="ok">Fetched Items sheet!</span>' +
-      '<br><strong>First 5 rows:</strong><pre>' +
-      JSON.stringify(data.slice(0,5), null, 2) +
-      '</pre>';
-  })
-  .catch(err => {
-    statusEl.innerHTML = '<span class="warn">Fetch FAILED</span> — ' + (err && err.message || err);
-  });
-    </script>
+/** 2) Fallback: Export CSV URL (requires “Anyone with the link: Viewer” on the sheet) **/
+/**    Get your IDs, then fill these in: **/
+const SPREADSHEET_ID = '1Vpdly1R_T44NoVf7fXbH49TMuRzoyBor9U00iSEwRkg'; // e.g. 1AbCDe...
+const GID = '0'; // e.g. 0 or 123456789
+const EXPORT_CSV_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GID}`;
+
+const statusEl = document.getElementById('status');
+
+function log(msg, klass) {
+  statusEl.innerHTML += `<div class="${klass || ''}">${msg}</div>`;
+}
+
+async function fetchTextWithStatus(url) {
+  const res = await fetch(url, { cache: 'no-store' });
+  const head = `HTTP ${res.status} ${res.statusText}`;
+  const text = await res.text();
+  return { ok: res.ok, head, text };
+}
+
+function parseCSV(text){
+  // robust-ish CSV parser (handles quotes, commas, newlines)
+  const rows = [];
+  let i=0, f='', r=[], inQ=false;
+  const pushF=()=>{r.push(f); f='';};
+  const pushR=()=>{rows.push(r); r=[];};
+  while(i<text.length){
+    const c=text[i];
+    if(inQ){
+      if(c==='"'){
+        if(text[i+1]==='"'){ f+='"'; i+=2; continue; }
+        inQ=false; i++; continue;
+      } else { f+=c; i++; continue; }
+    }
+    if(c===','){ pushF(); i++; continue; }
+    if(c==='"'){ inQ=true; i++; continue; }
+    if(c==='\r'){ i++; continue; }
+    if(c==='\n'){ pushF(); pushR(); i++; continue; }
+    f+=c; i++;
+  }
+  pushF(); if(r.length) pushR();
+  return rows;
+}
+
+async function tryLoad(url, label){
+  log(`Trying ${label}…`, '');
+  try{
+    const { ok, head, text } = await fetchTextWithStatus(url);
+    log(`${label} response: ${head}`, ok ? 'ok' : 'warn');
+    log(`<small>First 120 chars:</small><pre>${text.slice(0,120).replace(/[<>&]/g, s => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[s]))}</pre>`, '');
+    if(!ok) throw new Error(`Request not OK (${head})`);
+    const rows = parseCSV(text);
+    if(!rows.length) throw new Error('CSV appears empty.');
+    const [headers, ...data] = rows;
+    log(`<strong>Parsed!</strong> Headers: <code>${headers.join(', ')}</code>`, 'ok');
+    log(`<strong>First 5 rows:</strong><pre>${JSON.stringify(data.slice(0,5), null, 2)}</pre>`, '');
+    return true;
+  }catch(e){
+    log(`${label} failed: ${e.message}`, 'warn');
+    return false;
+  }
+}
+
+(async function run(){
+  statusEl.textContent = 'Running fetch test…';
+  statusEl.innerHTML = '';
+  // 1) Try Publish-to-web
+  const ok1 = await tryLoad(PUBLISH_CSV_URL, 'Publish-to-web CSV');
+  if(ok1) return;
+  // 2) Try Export URL fallback
+  const ok2 = await tryLoad(EXPORT_CSV_URL, 'Export CSV (Anyone with link: Viewer)');
+  if(ok2) return;
+  log('Both methods failed. Likely causes:', 'warn');
+  log('- Wrong link type (must be publish-to-web CSV or export CSV)', '');
+  log('- Sheet/tab not accessible (publish not enabled, or sharing not set to Anyone with link)', '');
+  log('- District network blocking docs.google.com CSV endpoints', '');
+})();
+</script>
+
   </body>
 </html>
