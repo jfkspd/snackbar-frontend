@@ -48,211 +48,78 @@
        style="width: min(520px, 95%); padding: 8px; margin: 8px 0; font-size: 16px;">
 
 <h2>Items</h2>
+    <button onclick="testSubmit()">Test Submit (first cart item)</button>
+
 <p id="summary" class="summary">0 items — $0.00</p>
 <div id="items" class="grid" aria-live="polite"></div>
+
 <script>
-/** Use your working CSV link */
-const ITEMS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTTtlEwo0hKcYdsMdjhp71Wq1NWDTEwIkdytSm_E1EQfv1x8FHx8sEzyhQoym44_RX2mp2FXvN3jCwf/pub?gid=0&single=true&output=csv';
+/*** GOOGLE FORM ENDPOINT ***/
+const FORM_BASE = 'https://docs.google.com/forms/d/e/1FAIpQLScbRVY7T_IKUPx_xYcDlyncM0TV09piz-xd_eLSO04O7gd0TA/viewform';
 
-const statusEl = document.getElementById('status');
-const itemsEl  = document.getElementById('items');
-const qInput   = document.getElementById('q');
-const summaryEl= document.getElementById('summary');
+const ENTRY = {
+  order_id:       'entry.1662144781',
+  payment_method: 'entry.1579496181',
+  subtotal:       'entry.1026596473',
+  paid:           'entry.459825042',
+  change:         'entry.1466509759',
+  item_id:        'entry.187752476',
+  name:           'entry.1735654032',
+  price_each:     'entry.224726774',
+  qty:            'entry.348979745',
+  line_total:     'entry.1281301043',
+};
 
-const fmt = new Intl.NumberFormat('en-US', { style:'currency', currency:'USD' });
-
-let ALL_ITEMS = [];   // parsed & active items
-let VIEW = [];        // filtered view
-const CART = new Map(); // item_id -> { ...item, qty }
-
-run().catch(e => {
-  statusEl.innerHTML = `<span class="warn">Script error</span> — ${e && e.message || e}`;
-  console.error(e);
-});
-
-async function run(){
-  setStatus('Fetching Items…');
-
-  try{
-    const res = await fetch(ITEMS_CSV_URL, { cache:'no-store' });
-    if(!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    const csv = await res.text();
-
-    const rows = parseCSV(csv);
-    if (!rows.length) throw new Error('CSV is empty');
-
-    ALL_ITEMS = rowsToItems(rows);
-    VIEW = ALL_ITEMS.slice();
-
-    statusEl.innerHTML = `<span class="ok">Fetched & parsed!</span> Found <strong>${ALL_ITEMS.length}</strong> active items.`;
-
-    renderItems(VIEW);
-    wireSearch();
-    updateSummary();
-  }catch(err){
-    statusEl.innerHTML = `<span class="warn">Fetch FAILED</span> — ${err && err.message || err}`;
-  }
+/*** Utility: escape HTML */
+function esc(s){
+  return String(s)
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;');
 }
 
-/** CSV parser that handles quoted commas/newlines */
-function parseCSV(text){
-  const rows = [];
-  let i=0, f='', r=[], inQ=false;
-  const pushF=()=>{ r.push(f); f=''; };
-  const pushR=()=>{ rows.push(r); r=[]; };
-  while(i<text.length){
-    const c=text[i];
-    if(inQ){
-      if(c==='"'){
-        if(text[i+1]==='"'){ f+='"'; i+=2; continue; }
-        inQ=false; i++; continue;
-      }
-      f+=c; i++; continue;
-    }
-    if(c==='"'){ inQ=true; i++; continue; }
-    if(c===','){ pushF(); i++; continue; }
-    if(c==='\r'){ i++; continue; }
-    if(c==='\n'){ pushF(); pushR(); i++; continue; }
-    f+=c; i++;
-  }
-  pushF(); if(r.length) pushR();
-  return rows;
-}
+/*** Demo cart just so you can test */
+let CART = [
+  { item_id: '1', name: 'BIG GATORADE', price_each: 2.00, qty: 1, line_total: 2.00 }
+];
 
-/** Helpers */
-function parseMoney(v){
-  // Strip everything except digits, dot, minus
-  const n = Number(String(v).replace(/[^\d.-]/g, ''));
-  return Number.isFinite(n) ? n : NaN;
-}
-function toBool(v){
-  const s = String(v).trim().toLowerCase();
-  return v === true || s === 'true' || s === '1' || s === 'yes' || s === 'y';
-}
-function escapeHTML(s){
-  return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-}
-function setStatus(msg){ statusEl.textContent = msg; }
-
-/** Map rows -> items using header names (case-insensitive) */
-function rowsToItems(rows){
-  const headers = rows[0].map(h => String(h).trim().toLowerCase());
-  const idx = {
-    item_id: headers.indexOf('item_id'),
-    name:    headers.indexOf('name'),
-    price:   headers.indexOf('price'),
-    active:  headers.indexOf('active')
-  };
-  const missing = Object.entries(idx).filter(([,i]) => i === -1).map(([k]) => k);
-  if(missing.length){
-    throw new Error('Missing columns: ' + missing.join(', ') + ' (need item_id, name, price, active)');
-  }
-  return rows.slice(1)
-    .map(row => ({
-      item_id: String(row[idx.item_id] ?? '').trim(),
-      name:    String(row[idx.name] ?? '').trim(),
-      price:   parseMoney(row[idx.price]),
-      active:  toBool(row[idx.active])
-    }))
-    .filter(it => it.active && it.item_id && Number.isFinite(it.price))
-    .sort((a,b) => a.name.localeCompare(b.name));
-}
-
-/** Render cards with +/– stepper */
-function renderItems(items){
-  if(!items.length){
-    itemsEl.innerHTML = '<p class="warn">No matching items.</p>';
+/*** Build a prefilled Form URL from the first item in the cart */
+function buildPrefillURL(){
+  if (!CART.length) {
+    alert('Cart is empty');
     return;
   }
+  const orderId = 'O' + Date.now();   // quick unique id
+  const subtotal = CART.reduce((s,it)=>s+it.line_total,0).toFixed(2);
+  const paid = subtotal;
+  const change = 0;
+  const method = 'cash';
+  const first = CART[0];
 
-  // Build all cards as one HTML string for speed (Chromebooks 👍)
-  let html = '';
-  for (const it of items){
-    const qty = CART.get(it.item_id)?.qty || 0;
-    html += `
-      <div class="card" data-id="${escapeHTML(it.item_id)}">
-        <div class="row">
-          <div class="name">${escapeHTML(it.name)}</div>
-          <div class="price">${fmt.format(it.price)}</div>
-        </div>
-        <div class="row">
-          <span class="id">ID ${escapeHTML(it.item_id)}</span>
-          <div class="stepper" role="group" aria-label="Quantity for ${escapeHTML(it.name)}">
-            <button class="btn" data-action="dec" aria-label="Decrease">−</button>
-            <span class="qty" aria-live="polite">${qty}</span>
-            <button class="btn" data-action="inc" aria-label="Increase">＋</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  itemsEl.innerHTML = html;
+  const params = new URLSearchParams();
+  params.set(ENTRY.order_id, orderId);
+  params.set(ENTRY.payment_method, method);
+  params.set(ENTRY.subtotal, subtotal);
+  params.set(ENTRY.paid, paid);
+  params.set(ENTRY.change, change);
+  params.set(ENTRY.item_id, first.item_id);
+  params.set(ENTRY.name, first.name);
+  params.set(ENTRY.price_each, first.price_each);
+  params.set(ENTRY.qty, first.qty);
+  params.set(ENTRY.line_total, first.line_total);
 
-  // Wire click handlers (event delegation = fewer listeners)
-  itemsEl.onclick = (e) => {
-    const btn = e.target.closest('[data-action]');
-    if (!btn) return;
-    const action = btn.getAttribute('data-action');
-    const card = btn.closest('.card');
-    if (!card) return;
-    const id = card.getAttribute('data-id');
-    if (action === 'inc') inc(id);
-    if (action === 'dec') dec(id);
-  };
+  return `${FORM_BASE}?usp=pp_url&${params.toString()}`;
 }
 
-function inc(id){
-  const item = ALL_ITEMS.find(x => String(x.item_id) === String(id));
-  if (!item) return;
-  const prev = CART.get(id)?.qty || 0;
-  CART.set(id, { ...item, qty: prev + 1 });
-  renderItems(VIEW);
-  updateSummary();
-}
-function dec(id){
-  const item = ALL_ITEMS.find(x => String(x.item_id) === String(id));
-  if (!item) return;
-  const prev = CART.get(id)?.qty || 0;
-  const next = Math.max(0, prev - 1);
-  if (next === 0) CART.delete(id); else CART.set(id, { ...item, qty: next });
-  renderItems(VIEW);
-  updateSummary();
-}
-
-/** Update summary line */
-function updateSummary(){
-  let count = 0, subtotal = 0;
-  for (const { price, qty } of CART.values()){
-    count += qty;
-    subtotal += price * qty;
-  }
-  subtotal = Math.round(subtotal * 100) / 100;
-  summaryEl.textContent = `${count} item${count===1?'':'s'} — ${fmt.format(subtotal)}`;
-}
-
-/** Search wiring with debounce */
-function wireSearch(){
-  let t;
-  qInput.addEventListener('input', () => {
-    clearTimeout(t);
-    t = setTimeout(applyFilter, 120);
-  });
-}
-
-function applyFilter(){
-  const needle = (qInput.value || '').trim().toLowerCase();
-  if(!needle){
-    VIEW = ALL_ITEMS.slice();
-    renderItems(VIEW);
-    return;
-  }
-  VIEW = ALL_ITEMS.filter(it =>
-    it.name.toLowerCase().includes(needle) ||
-    String(it.item_id).toLowerCase().includes(needle)
-  );
-  renderItems(VIEW);
+/*** Test button action */
+function testSubmit(){
+  const url = buildPrefillURL();
+  if (url) window.open(url, '_blank');
 }
 </script>
+
+
+    
 
 
 
