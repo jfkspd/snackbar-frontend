@@ -50,12 +50,9 @@
     <h2>Items</h2>
     <p id="summary" class="summary">0 items — $0.00</p>
     <button id="testSubmit" type="button">Test Submit (first cart item)</button>
-    <button id="oneClick" type="button">One-click Submit (first cart item)</button>
+    <button id="oneClick" type="button">One-click Submit (via Proxy)</button>
 
     <div id="items" class="grid" aria-live="polite"></div>
-
-    <!-- hidden target for one-click POST -->
-    <iframe name="formTarget" style="display:none;"></iframe>
 
     <script>
     /*** CONFIG: CSV (Items) ***/
@@ -65,10 +62,6 @@
     /*** CONFIG: Google Form mapping (from your prefilled link) ***/
     const FORM_BASE =
       'https://docs.google.com/forms/d/e/1FAIpQLScbRVY7T_IKUPx_xYcDlyncM0TV09piz-xd_eLSO04O7gd0TA/viewform';
-
-    /* IMPORTANT: Use the exact action URL from your form's HTML (note /u/0/d/e/.../formResponse) */
-    const FORM_POST =
-      'https://docs.google.com/forms/u/0/d/e/1FAIpQLScbRVY7T_IKUPx_xYcDlyncM0TV09piz-xd_eLSO04O7gd0TA/formResponse';
 
     const ENTRY = {
       order_id:       'entry.1662144781',
@@ -82,6 +75,9 @@
       qty:            'entry.348979745',
       line_total:     'entry.1281301043',
     };
+
+    // Cloudflare Worker Proxy
+    const PROXY_URL = 'https://snackbar-form-proxy.chris-herner.workers.dev/';
 
     // DOM
     const statusEl  = document.getElementById('status');
@@ -292,8 +288,8 @@
       window.open(prefillUrl, '_blank', 'noopener');
     }
 
-    /** One-click Submit (silent POST) */
-    function onOneClickSubmit(){
+    /** One-click Submit (via Proxy) */
+    async function onOneClickSubmit(){
       const first = CART.values().next().value;
       if (!first){ alert('Add at least one item before submitting.'); return; }
 
@@ -303,53 +299,32 @@
       const paid = subtotal, change = 0, payMethod = 'cash';
       const line_total = subtotal;
 
-      const form = document.createElement('form');
-      form.action = FORM_POST;
-      form.method = 'POST';
-      form.target = 'formTarget';
-      form.style.display = 'none';
+      const payload = new URLSearchParams();
+      payload.set(ENTRY.order_id, orderId);
+      payload.set(ENTRY.payment_method, payMethod);
+      payload.set(ENTRY.subtotal, subtotal);
+      payload.set(ENTRY.paid, paid);
+      payload.set(ENTRY.change, change);
+      payload.set(ENTRY.item_id, first.item_id);
+      payload.set(ENTRY.name, first.name);
+      payload.set(ENTRY.price_each, first.price);
+      payload.set(ENTRY.qty, first.qty);
+      payload.set(ENTRY.line_total, line_total);
 
-      const set = (name,val)=>{ const input=document.createElement('input');
-        input.type='hidden'; input.name=name; input.value=String(val);
-        form.appendChild(input);
-      };
-
-      /* EXACT hidden inputs from your form (required by Google Forms) */
-      set('fvv', '1');
-      set('partialResponse', '[null,null,"-6649936597426619020"]');
-      set('pageHistory', '0');
-      set('token', 'f_x5nJkBAAA.TO6vQJhB8GJ4pCYLHn0AQA._z0xKt6U-yBSYZ4fSg3H9A');
-      set('tag', 'Ad6N7VTHp1YYXD0Gim9jT54s3muTSkCZwuIqDpU+Bm4nChEiVQ==');
-      set('fbzx', '-6649936597426619020');
-      set('submissionTimestamp', '-1');
-
-      /* Your entry fields */
-      set(ENTRY.order_id, orderId);
-      set(ENTRY.payment_method, payMethod);
-      set(ENTRY.subtotal, subtotal);
-      set(ENTRY.paid, paid);
-      set(ENTRY.change, change);
-      set(ENTRY.item_id, first.item_id);
-      set(ENTRY.name, first.name);
-      set(ENTRY.price_each, first.price);
-      set(ENTRY.qty, first.qty);
-      set(ENTRY.line_total, line_total);
-
-      document.body.appendChild(form);
-
-      const iframe = document.getElementsByName('formTarget')[0];
-      let done = false;
-      const finish = () => {
-        if (done) return; done = true;
-        CART.delete(String(first.item_id));
-        renderItems(VIEW); updateSummary(); form.remove();
-        statusEl.innerHTML += `<div class="ok">Submitted 1 line silently (order ${orderId}). Check Form Responses 1.</div>`;
-      };
-      const onLoad = () => { iframe.removeEventListener('load', onLoad); finish(); };
-      iframe.addEventListener('load', onLoad);
-      setTimeout(finish, 2500); // fallback in case load is swallowed
-
-      form.submit();
+      try {
+        const res = await fetch(PROXY_URL, {
+          method: 'POST',
+          body: payload,
+        });
+        if(res.ok){
+          statusEl.innerHTML += `<div class="ok">Submitted via Proxy (order ${orderId}). Check Form Responses 1.</div>`;
+          CART.clear(); renderItems(VIEW); updateSummary();
+        } else {
+          statusEl.innerHTML += `<div class="warn">Proxy failed — ${res.status}</div>`;
+        }
+      } catch(err){
+        statusEl.innerHTML += `<div class="warn">Proxy error — ${err}</div>`;
+      }
     }
     </script>
   </body>
