@@ -77,6 +77,11 @@
       line_total:     'entry.1281301043',
     };
 
+    // Hidden-field constants required by Google Forms for POST
+    const FORM_FVV = '1';
+    const FORM_PAGE_HISTORY = '0';
+    const FORM_FBZX = '1424499657996445122'; // <-- your token
+
     // DOM
     const statusEl  = document.getElementById('status');
     const itemsEl   = document.getElementById('items');
@@ -302,6 +307,13 @@
       form.target = 'formTarget';
       form.style.display = 'none';
       const set = (name,val)=>{const input=document.createElement('input');input.type='hidden';input.name=name;input.value=String(val);form.appendChild(input);};
+
+      // Required hidden fields for Google Forms
+      set('fvv', FORM_FVV);
+      set('pageHistory', FORM_PAGE_HISTORY);
+      set('fbzx', FORM_FBZX);
+
+      // Your entry fields
       set(ENTRY.order_id, orderId);
       set(ENTRY.payment_method, payMethod);
       set(ENTRY.subtotal, subtotal);
@@ -312,16 +324,21 @@
       set(ENTRY.price_each, first.price);
       set(ENTRY.qty, first.qty);
       set(ENTRY.line_total, line_total);
+
       document.body.appendChild(form);
 
       const iframe = document.getElementsByName('formTarget')[0];
-      const onLoad = () => {
-        iframe.removeEventListener('load', onLoad);
+      let done = false;
+      const finish = () => {
+        if (done) return; done = true;
         CART.delete(String(first.item_id));
         renderItems(VIEW); updateSummary(); form.remove();
         statusEl.innerHTML += `<div class="ok">Submitted 1 line silently (order ${orderId}). Check Form Responses 1.</div>`;
       };
+      const onLoad = () => { iframe.removeEventListener('load', onLoad); finish(); };
       iframe.addEventListener('load', onLoad);
+      setTimeout(finish, 2500); // fallback
+
       form.submit();
     }
     </script>
