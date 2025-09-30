@@ -51,9 +51,10 @@
     <p id="summary" class="summary">0 items — $0.00</p>
     <button id="testSubmit" type="button">Test Submit (first cart item)</button>
     <button id="oneClick" type="button">One-click Submit (first cart item)</button>
+
     <div id="items" class="grid" aria-live="polite"></div>
 
-    <!-- Hidden iframe target for background submissions -->
+    <!-- hidden target for one-click POST -->
     <iframe name="formTarget" style="display:none;"></iframe>
 
     <script>
@@ -86,9 +87,9 @@
 
     // State
     const fmt = new Intl.NumberFormat('en-US', { style:'currency', currency:'USD' });
-    let ALL_ITEMS = [];
-    let VIEW = [];
-    const CART = new Map();
+    let ALL_ITEMS = [];    // parsed & active items
+    let VIEW = [];         // filtered view
+    const CART = new Map();// item_id -> { item_id, name, price, qty }
 
     run().catch(e => {
       statusEl.innerHTML = `<span class="warn">Script error</span> — ${e && e.message || e}`;
@@ -114,6 +115,7 @@
         wireSearch();
         updateSummary();
 
+        // wire buttons
         testBtn.addEventListener('click', onTestSubmit);
         oneClickBtn.addEventListener('click', onOneClickSubmit);
       }catch(err){
@@ -180,7 +182,7 @@
         .sort((a,b) => a.name.localeCompare(b.name));
     }
 
-    /** Render items as cards with +/− */
+    /** Render cards */
     function renderItems(items){
       if(!items.length){
         itemsEl.innerHTML = '<p class="warn">No matching items.</p>';
@@ -197,10 +199,10 @@
             </div>
             <div class="row">
               <span class="id">ID ${escapeHTML(it.item_id)}</span>
-              <div class="stepper" role="group">
-                <button class="btn" data-action="dec">−</button>
-                <span class="qty">${qty}</span>
-                <button class="btn" data-action="inc">＋</button>
+              <div class="stepper" role="group" aria-label="Quantity for ${escapeHTML(it.name)}">
+                <button class="btn" data-action="dec" aria-label="Decrease">−</button>
+                <span class="qty" aria-live="polite">${qty}</span>
+                <button class="btn" data-action="inc" aria-label="Increase">＋</button>
               </div>
             </div>
           </div>
@@ -224,8 +226,7 @@
       if (!item) return;
       const prev = CART.get(id)?.qty || 0;
       CART.set(id, { ...item, qty: prev + 1 });
-      renderItems(VIEW);
-      updateSummary();
+      renderItems(VIEW); updateSummary();
     }
     function dec(id){
       const item = ALL_ITEMS.find(x => String(x.item_id) === String(id));
@@ -233,15 +234,13 @@
       const prev = CART.get(id)?.qty || 0;
       const next = Math.max(0, prev - 1);
       if (next === 0) CART.delete(id); else CART.set(id, { ...item, qty: next });
-      renderItems(VIEW);
-      updateSummary();
+      renderItems(VIEW); updateSummary();
     }
 
     function updateSummary(){
       let count = 0, subtotal = 0;
       for (const { price, qty } of CART.values()){
-        count += qty;
-        subtotal += price * qty;
+        count += qty; subtotal += price * qty;
       }
       subtotal = Math.round(subtotal * 100) / 100;
       summaryEl.textContent = `${count} item${count===1?'':'s'} — ${fmt.format(subtotal)}`;
@@ -250,17 +249,12 @@
     function wireSearch(){
       let t;
       qInput.addEventListener('input', () => {
-        clearTimeout(t);
-        t = setTimeout(applyFilter, 120);
+        clearTimeout(t); t = setTimeout(applyFilter, 120);
       });
     }
     function applyFilter(){
       const needle = (qInput.value || '').trim().toLowerCase();
-      if(!needle){
-        VIEW = ALL_ITEMS.slice();
-        renderItems(VIEW);
-        return;
-      }
+      if(!needle){ VIEW = ALL_ITEMS.slice(); renderItems(VIEW); return; }
       VIEW = ALL_ITEMS.filter(it =>
         it.name.toLowerCase().includes(needle) ||
         String(it.item_id).toLowerCase().includes(needle)
@@ -268,72 +262,66 @@
       renderItems(VIEW);
     }
 
-    /** Test Submit (prefilled tab) */
+    /** Test Submit (prefilled URL) */
     function onTestSubmit(){
       const first = CART.values().next().value;
-      if (!first) {
-        alert('Add at least one item before testing submit.');
-        return;
-      }
-      const orderId = 'O' + Date.now();
-      const subtotal = first.price * first.qty;
+      if (!first){ alert('Add at least one item with + before testing submit.'); return; }
+      const now = new Date();
+      const orderId = 'O' + now.toISOString().replace(/[-:.TZ]/g,'').slice(0,14);
+      const subtotal = Math.round(first.price * first.qty * 100) / 100;
+      const paid = subtotal, change = 0, payMethod = 'cash';
+      const line_total = subtotal;
       const params = new URLSearchParams();
       params.set(ENTRY.order_id, orderId);
-      params.set(ENTRY.payment_method, 'cash');
-      params.set(ENTRY.subtotal, subtotal);
-      params.set(ENTRY.paid, subtotal);
-      params.set(ENTRY.change, 0);
+      params.set(ENTRY.payment_method, payMethod);
+      params.set(ENTRY.subtotal, String(subtotal));
+      params.set(ENTRY.paid, String(paid));
+      params.set(ENTRY.change, String(change));
       params.set(ENTRY.item_id, first.item_id);
       params.set(ENTRY.name, first.name);
-      params.set(ENTRY.price_each, first.price);
-      params.set(ENTRY.qty, first.qty);
-      params.set(ENTRY.line_total, subtotal);
-      const url = `${FORM_BASE}?usp=pp_url&${params.toString()}`;
-      window.open(url,'_blank');
+      params.set(ENTRY.price_each, String(first.price));
+      params.set(ENTRY.qty, String(first.qty));
+      params.set(ENTRY.line_total, String(line_total));
+      const prefillUrl = `${FORM_BASE}?usp=pp_url&${params.toString()}`;
+      window.open(prefillUrl, '_blank', 'noopener');
     }
 
-    /** One-click hidden submit */
+    /** One-click Submit (silent POST) */
     function onOneClickSubmit(){
       const first = CART.values().next().value;
-      if (!first) {
-        alert('Add at least one item before submitting.');
-        return;
-      }
-      const orderId = 'O' + Date.now();
-      const subtotal = first.price * first.qty;
+      if (!first){ alert('Add at least one item before submitting.'); return; }
+      const now = new Date();
+      const orderId = 'O' + now.toISOString().replace(/[-:.TZ]/g,'').slice(0,14);
+      const subtotal = Math.round(first.price * first.qty * 100) / 100;
+      const paid = subtotal, change = 0, payMethod = 'cash';
+      const line_total = subtotal;
 
       const form = document.createElement('form');
       form.action = FORM_POST;
       form.method = 'POST';
       form.target = 'formTarget';
       form.style.display = 'none';
-      const set = (name,val)=>{ 
-        const input=document.createElement('input');
-        input.type='hidden'; input.name=name; input.value=val;
-        form.appendChild(input);
-      };
+      const set = (name,val)=>{const input=document.createElement('input');input.type='hidden';input.name=name;input.value=String(val);form.appendChild(input);};
       set(ENTRY.order_id, orderId);
-      set(ENTRY.payment_method, 'cash');
+      set(ENTRY.payment_method, payMethod);
       set(ENTRY.subtotal, subtotal);
-      set(ENTRY.paid, subtotal);
-      set(ENTRY.change, 0);
+      set(ENTRY.paid, paid);
+      set(ENTRY.change, change);
       set(ENTRY.item_id, first.item_id);
       set(ENTRY.name, first.name);
       set(ENTRY.price_each, first.price);
       set(ENTRY.qty, first.qty);
-      set(ENTRY.line_total, subtotal);
+      set(ENTRY.line_total, line_total);
       document.body.appendChild(form);
 
-      const iframe=document.getElementsByName('formTarget')[0];
-      const onLoad=()=>{ 
-        iframe.removeEventListener('load',onLoad);
-        CART.delete(first.item_id);
-        renderItems(VIEW);
-        updateSummary();
-        form.remove();
-        statusEl.innerHTML += `<div class="ok">Submitted 1 line in background (order ${orderId})</div>`;
+      const iframe = document.getElementsByName('formTarget')[0];
+      const onLoad = () => {
+        iframe.removeEventListener('load', onLoad);
+        CART.delete(String(first.item_id));
+        renderItems(VIEW); updateSummary(); form.remove();
+        statusEl.innerHTML += `<div class="ok">Submitted 1 line silently (order ${orderId}). Check Form Responses 1.</div>`;
       };
-      iframe.addEventListener('load',onLoad);
+      iframe.addEventListener('load', onLoad);
       form.submit();
     }
     </script>
