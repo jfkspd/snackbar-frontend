@@ -59,11 +59,17 @@
 
     <script>
     /*** CONFIG: CSV (Items) ***/
-    const ITEMS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTTtlEwo0hKcYdsMdjhp71Wq1NWDTEwIkdytSm_E1EQfv1x8FHx8sEzyhQoym44_RX2mp2FXvN3jCwf/pub?gid=0&single=true&output=csv';
+    const ITEMS_CSV_URL =
+      'https://docs.google.com/spreadsheets/d/e/2PACX-1vTTtlEwo0hKcYdsMdjhp71Wq1NWDTEwIkdytSm_E1EQfv1x8FHx8sEzyhQoym44_RX2mp2FXvN3jCwf/pub?gid=0&single=true&output=csv';
 
     /*** CONFIG: Google Form mapping (from your prefilled link) ***/
-    const FORM_BASE = 'https://docs.google.com/forms/d/e/1FAIpQLScbRVY7T_IKUPx_xYcDlyncM0TV09piz-xd_eLSO04O7gd0TA/viewform';
-    const FORM_POST = FORM_BASE.replace('viewform','formResponse');
+    const FORM_BASE =
+      'https://docs.google.com/forms/d/e/1FAIpQLScbRVY7T_IKUPx_xYcDlyncM0TV09piz-xd_eLSO04O7gd0TA/viewform';
+
+    /* IMPORTANT: Use the exact action URL from your form's HTML (note /u/0/d/e/.../formResponse) */
+    const FORM_POST =
+      'https://docs.google.com/forms/u/0/d/e/1FAIpQLScbRVY7T_IKUPx_xYcDlyncM0TV09piz-xd_eLSO04O7gd0TA/formResponse';
+
     const ENTRY = {
       order_id:       'entry.1662144781',
       payment_method: 'entry.1579496181',
@@ -76,11 +82,6 @@
       qty:            'entry.348979745',
       line_total:     'entry.1281301043',
     };
-
-    // Hidden-field constants required by Google Forms for POST
-    const FORM_FVV = '1';
-    const FORM_PAGE_HISTORY = '0';
-    const FORM_FBZX = '1424499657996445122'; // <-- your token
 
     // DOM
     const statusEl  = document.getElementById('status');
@@ -295,6 +296,7 @@
     function onOneClickSubmit(){
       const first = CART.values().next().value;
       if (!first){ alert('Add at least one item before submitting.'); return; }
+
       const now = new Date();
       const orderId = 'O' + now.toISOString().replace(/[-:.TZ]/g,'').slice(0,14);
       const subtotal = Math.round(first.price * first.qty * 100) / 100;
@@ -306,16 +308,22 @@
       form.method = 'POST';
       form.target = 'formTarget';
       form.style.display = 'none';
-      const set = (name,val)=>{const input=document.createElement('input');input.type='hidden';input.name=name;input.value=String(val);form.appendChild(input);};
 
-      // Required hidden fields for Google Forms
-      set('fvv', FORM_FVV);
-      set('pageHistory', FORM_PAGE_HISTORY);
-      set('fbzx', FORM_FBZX);
-      set('submit', 'Submit');
-      set('draftResponse', '[]');
-      
-      // Your entry fields
+      const set = (name,val)=>{ const input=document.createElement('input');
+        input.type='hidden'; input.name=name; input.value=String(val);
+        form.appendChild(input);
+      };
+
+      /* EXACT hidden inputs from your form (required by Google Forms) */
+      set('fvv', '1');
+      set('partialResponse', '[null,null,"-6649936597426619020"]');
+      set('pageHistory', '0');
+      set('token', 'f_x5nJkBAAA.TO6vQJhB8GJ4pCYLHn0AQA._z0xKt6U-yBSYZ4fSg3H9A');
+      set('tag', 'Ad6N7VTHp1YYXD0Gim9jT54s3muTSkCZwuIqDpU+Bm4nChEiVQ==');
+      set('fbzx', '-6649936597426619020');
+      set('submissionTimestamp', '-1');
+
+      /* Your entry fields */
       set(ENTRY.order_id, orderId);
       set(ENTRY.payment_method, payMethod);
       set(ENTRY.subtotal, subtotal);
@@ -339,7 +347,7 @@
       };
       const onLoad = () => { iframe.removeEventListener('load', onLoad); finish(); };
       iframe.addEventListener('load', onLoad);
-      setTimeout(finish, 2500); // fallback
+      setTimeout(finish, 2500); // fallback in case load is swallowed
 
       form.submit();
     }
