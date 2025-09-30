@@ -23,7 +23,7 @@
 <h2>Items</h2>
 <div id="items"></div>
 
- <script>
+<script>
 /** Use your working CSV link */
 const ITEMS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTTtlEwo0hKcYdsMdjhp71Wq1NWDTEwIkdytSm_E1EQfv1x8FHx8sEzyhQoym44_RX2mp2FXvN3jCwf/pub?gid=0&single=true&output=csv';
 
@@ -31,28 +31,55 @@ const statusEl = document.getElementById('status');
 const itemsEl  = document.getElementById('items');
 const qInput   = document.getElementById('q');
 
-let ALL_ITEMS = [];  // parsed & active items
-let VIEW = [];       // current filtered view
+let ALL_ITEMS = [];
+let VIEW = [];
 
-run();
+run().catch(e => {
+  // Top-level catch fallback
+  statusEl.innerHTML = `<span class="warn">Script error</span> — ${e && e.message || e}`;
+  console.error(e);
+});
 
 async function run(){
-  statusEl.textContent = 'Fetching Items…';
+  log('Fetching Items…');
+
+  // Step 1: fetch + dump HTTP status and first bytes
+  const { ok, head, text } = await fetchTextWithStatus(ITEMS_CSV_URL);
+  log(`Response: ${head}`, ok ? 'ok' : 'warn');
+  log(`<small>First 160 chars:</small><pre>${escapeHTML(text.slice(0,160))}</pre>`);
+
+  if (!ok) throw new Error(`Request not OK (${head})`);
+
+  // Step 2: parse CSV
+  const rows = parseCSV(text);
+  log(`Parsed ${rows.length} CSV rows.`, rows.length ? 'ok' : 'warn');
+  if (!rows.length) throw new Error('CSV is empty');
+
+  // Step 3: map to items
+  ALL_ITEMS = rowsToItems(rows);
+  VIEW = ALL_ITEMS.slice();
+  statusEl.innerHTML = `<span class="ok">Fetched & parsed!</span> Found <strong>${ALL_ITEMS.length}</strong> active items.`;
+
+  // Step 4: render + wire search
+  renderItems(VIEW);
+  wireSearch();
+}
+
+function log(msg, klass){
+  const line = document.createElement('div');
+  if (klass) line.className = klass;
+  line.innerHTML = msg;
+  statusEl.appendChild(line);
+}
+
+async function fetchTextWithStatus(url){
   try{
-    const res = await fetch(ITEMS_CSV_URL, { cache:'no-store' });
-    if(!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    const csv = await res.text();
-    const rows = parseCSV(csv);
-    if(!rows.length) throw new Error('CSV is empty');
-
-    ALL_ITEMS = rowsToItems(rows);
-    VIEW = ALL_ITEMS.slice(); // start with all
-    statusEl.innerHTML = `<span class="ok">Fetched & parsed!</span> Found <strong>${ALL_ITEMS.length}</strong> active items.`;
-
-    renderItems(VIEW);
-    wireSearch();
+    const res = await fetch(url, { cache: 'no-store' });
+    const head = `HTTP ${res.status} ${res.statusText}`;
+    const text = await res.text();
+    return { ok: res.ok, head, text };
   }catch(err){
-    statusEl.innerHTML = `<span class="warn">Fetch FAILED</span> — ${err && err.message || err}`;
+    return { ok:false, head:`Network error`, text:String(err && err.message || err) };
   }
 }
 
@@ -110,7 +137,6 @@ function toBool(v){
   return v === true || s === 'true' || s === '1' || s === 'yes';
 }
 
-/** Simple client-side render */
 function renderItems(items){
   if(!items.length){
     itemsEl.innerHTML = '<p class="warn">No matching items.</p>';
@@ -122,7 +148,6 @@ function renderItems(items){
   itemsEl.innerHTML = `<p><strong>${items.length}</strong> items shown</p><ul>${list}</ul>`;
 }
 
-/** Search wiring with debounce */
 function wireSearch(){
   let t;
   qInput.addEventListener('input', () => {
@@ -147,6 +172,9 @@ function applyFilter(){
 
 function esc(s){
   return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+}
+function escapeHTML(s){
+  return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 }
 </script>
 
