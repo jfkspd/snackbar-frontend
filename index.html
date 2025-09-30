@@ -18,15 +18,19 @@
     <script>
       // Harmless, CORS-safe JSON test endpoint:
       fetch('https://docs.google.com/spreadsheets/d/e/2PACX-1vTTtlEwo0hKcYdsMdjhp71Wq1NWDTEwIkdytSm_E1EQfv1x8FHx8sEzyhQoym44_RX2mp2FXvN3jCwf/pub?gid=0&single=true&output=csv', {cache:'no-store'})
-        .then(r => r.json())
-        .then(j => {
-          document.getElementById('status').innerHTML =
-            '<span class="ok">Fetch OK</span> — got id='+j.id+'; we can do HTTPS GETs.';
-        })
-        .catch(err => {
-          document.getElementById('status').innerHTML =
-            '<span class="warn">Fetch FAILED</span> — '+(err && err.message || err);
-        });
+  .then(r => r.text())   // ✅ get raw CSV text
+  .then(csv => {
+    const rows = csv.trim().split('\n').map(r => r.split(','));
+    const [headers, ...data] = rows;
+
+    statusEl.innerHTML = '<span class="ok">Fetched Items sheet!</span>' +
+      '<br><strong>First 5 rows:</strong><pre>' +
+      JSON.stringify(data.slice(0,5), null, 2) +
+      '</pre>';
+  })
+  .catch(err => {
+    statusEl.innerHTML = '<span class="warn">Fetch FAILED</span> — ' + (err && err.message || err);
+  });
     </script>
   </body>
 </html>
